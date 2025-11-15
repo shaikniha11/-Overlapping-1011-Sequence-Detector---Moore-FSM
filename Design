@@ -1,0 +1,85 @@
+// Overlapping 1011 Sequence Detector - Moore FSM
+// Can detect overlapping patterns (e.g., 10110111 has 2 detections)
+
+module seq_detector_1011_moore_overlap (
+    input  wire clk,          // Clock signal
+    input  wire rst_n,        // Active-low asynchronous reset
+    input  wire data_in,      // Serial input bit stream
+    output reg  detect_out    // High for 1 clock cycle when 1011 detected
+);
+
+    // State encoding - One-Hot
+    localparam [4:0] IDLE  = 5'b00001,  // Initial state
+                     S1    = 5'b00010,  // Detected '1'
+                     S10   = 5'b00100,  // Detected '10'
+                     S101  = 5'b01000,  // Detected '101'
+                     S1011 = 5'b10000;  // Detected '1011' (FINAL)
+
+    // State registers
+    reg [4:0] current_state, next_state;
+
+    // Sequential Logic: State Register with Asynchronous Reset
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            current_state <= IDLE;
+        else
+            current_state <= next_state;
+    end
+
+    // Combinational Logic: Next State Logic
+    always @(*) begin
+        // Default assignment to avoid latches
+        next_state = IDLE;
+        
+        case (current_state)
+            IDLE: begin
+                if (data_in)
+                    next_state = S1;    // Got first '1'
+                else
+                    next_state = IDLE;  // Stay in IDLE on '0'
+            end
+            
+            S1: begin
+                if (data_in)
+                    next_state = S1;    // Another '1', restart
+                else
+                    next_state = S10;   // Got '10'
+            end
+            
+            S10: begin
+                if (data_in)
+                    next_state = S101;  // Got '101'
+                else
+                    next_state = IDLE;  // Got '100', reset
+            end
+            
+            S101: begin
+                if (data_in)
+                    next_state = S1011; // Got '1011' - DETECTED!
+                else
+                    next_state = S10;   // Got '1010', go to S10
+            end
+            
+            S1011: begin
+                // OVERLAPPING: Smart transitions to reuse bits
+                if (data_in)
+                    next_state = S1;    // '1' after '1011' → new pattern starts
+                else
+                    next_state = S10;   // '0' after '1011' → we have '10'
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // Output Logic: Moore Machine (output depends only on state)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            detect_out <= 1'b0;
+        else if (current_state == S1011)
+            detect_out <= 1'b1;  // Output high when in detection state
+        else
+            detect_out <= 1'b0;
+    end
+
+endmodule
